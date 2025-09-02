@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">Estrutura de Pastas</h1>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Árvore de Diretórios</h5>
+    </div>
+    <div class="card-body">
+        {% if folder_structure %}
+        <div id="folderTree">
+            {{ render_folder_tree(folder_structure) }}
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+            <p class="text-muted">Nenhuma estrutura de pasta encontrada. Escaneie algumas pastas primeiro.</p>
+            <a href="{{ url_for('scan_folder') }}" class="btn btn-primary">
+                <i class="fas fa-folder-plus"></i> Escanear Pasta
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% macro render_folder_tree(structure, level=0) %}
+    <ul class="list-unstyled{% if level == 0 %} ps-0{% else %} ps-3{% endif %}">
+        {% for folder, subfolders in structure.items() %}
+        <li class="mb-2">
+            <div class="d-flex align-items-center">
+                {% if subfolders %}
+                <button class="btn btn-sm btn-link text-decoration-none p-0 me-2" onclick="toggleFolder(this)">
+                    <i class="fas fa-folder-plus"></i>
+                </button>
+                {% else %}
+                <span class="me-4"></span>
+                {% endif %}
+                <i class="fas fa-folder text-warning me-2"></i>
+                <span class="fw-bold">{{ folder }}</span>
+            </div>
+            {% if subfolders %}
+            <div class="folder-content" style="display: none;">
+                {{ render_folder_tree(subfolders, level + 1) }}
+            </div>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+{% endmacro %}
+
+<style>
+.folder-content {
+    transition: all 0.3s ease;
+}
+.folder-expanded {
+    display: block !important;
+}
+</style>
+
+<script>
+function toggleFolder(button) {
+    const content = button.closest('li').querySelector('.folder-content');
+    const icon = button.querySelector('i');
+    
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        icon.className = 'fas fa-folder-minus';
+    } else {
+        content.style.display = 'none';
+        icon.className = 'fas fa-folder-plus';
+    }
+}
+</script>
+{% endblock %}

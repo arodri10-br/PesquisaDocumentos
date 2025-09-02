@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">Detalhes do Documento</h1>
+    <a href="{{ url_for('documents') }}" class="btn btn-outline-primary">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-file-{% if document.file_type == 'pdf' %}pdf text-danger{% elif document.file_type in ['doc', 'docx'] %}word text-primary{% elif document.file_type in ['xls', 'xlsx'] %}excel text-success{% elif document.file_type in ['ppt', 'pptx'] %}powerpoint text-warning{% else %}alt{% endif %} me-2"></i>
+                    {{ document.filename }}
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if document.content_text %}
+                <h6>Conteúdo do Documento:</h6>
+                <div class="border p-3 bg-light" style="max-height: 400px; overflow-y: auto;">
+                    <pre class="mb-0" style="white-space: pre-wrap;">{{ document.content_text[:2000] }}{% if document.content_text|length > 2000 %}...{% endif %}</pre>
+                </div>
+                {% else %}
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Conteúdo não disponível ou ainda não foi processado.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Informações do Arquivo</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <td><strong>Tipo:</strong></td>
+                        <td><span class="badge bg-info">{{ document.file_type.upper() }}</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Tamanho:</strong></td>
+                        <td>
+                            {% if document.file_size %}
+                                {% if document.file_size < 1024 %}
+                                    {{ document.file_size }} B
+                                {% elif document.file_size < 1048576 %}
+                                    {{ "%.1f"|format(document.file_size/1024) }} KB
+                                {% else %}
+                                    {{ "%.1f"|format(document.file_size/1048576) }} MB
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Status:</strong></td>
+                        <td>
+                            {% if document.status == 'indexed' %}
+                                <span class="badge bg-success">Indexado</span>
+                            {% elif document.status == 'pending' %}
+                                <span class="badge bg-warning">Pendente</span>
+                            {% else %}
+                                <span class="badge bg-danger">Erro</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Criado:</strong></td>
+                        <td>
+                            {% if document.created_date %}
+                                {{ document.created_date.strftime('%d/%m/%Y %H:%M') }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Modificado:</strong></td>
+                        <td>
+                            {% if document.modified_date %}
+                                {{ document.modified_date.strftime('%d/%m/%Y %H:%M') }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Indexado:</strong></td>
+                        <td>
+                            {% if document.indexed_date %}
+                                {{ document.indexed_date.strftime('%d/%m/%Y %H:%M') }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0">Localização</h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-0">
+                    <i class="fas fa-folder"></i> {{ document.folder_path }}<br>
+                    <small class="text-muted">{{ document.filepath }}</small>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

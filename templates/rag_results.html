@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">Resultado da Consulta</h1>
+    <a href="{{ url_for('rag_chat') }}" class="btn btn-outline-primary">
+        <i class="fas fa-arrow-left"></i> Nova Pergunta
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-question-circle text-primary"></i> 
+                    Sua Pergunta
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="lead">{{ question }}</p>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-robot text-success"></i> 
+                    Resposta Gerada
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="bg-light p-3 rounded">
+                    <pre style="white-space: pre-wrap;">{{ answer }}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Documentos Consultados</h6>
+            </div>
+            <div class="card-body">
+                {% if relevant_docs %}
+                    {% for doc in relevant_docs %}
+                    <div class="border-bottom pb-3 mb-3">
+                        <h6 class="mb-1">
+                            <i class="fas fa-file-{% if doc.file_type == 'pdf' %}pdf text-danger{% elif doc.file_type in ['doc', 'docx'] %}word text-primary{% elif doc.file_type in ['xls', 'xlsx'] %}excel text-success{% elif doc.file_type in ['ppt', 'pptx'] %}powerpoint text-warning{% else %}alt{% endif %} me-1"></i>
+                            {{ doc.filename }}
+                        </h6>
+                        <p class="text-muted small mb-1">{{ doc.folder_path }}</p>
+                        {% if doc.similarity_score is defined %}
+
+                        <span class="badge bg-success">Relevância: {{ "%.1f"|format(doc.similarity_score * 100) }}%</span>
+                        {% endif %}
+                        <br>
+                        <a href="{{ url_for('view_document', doc_id=doc.id) }}" class="btn btn-sm btn-outline-primary mt-2">
+                            <i class="fas fa-eye"></i> Ver Documento
+                        </a>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">Nenhum documento específico foi usado como base.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

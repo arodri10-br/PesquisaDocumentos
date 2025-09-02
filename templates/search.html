@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">Buscar Documentos</h1>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Sistema de Busca Avançado</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="mb-3">
+                        <label for="query" class="form-label">Termo de Busca</label>
+                        <input type="text" class="form-control form-control-lg" id="query" name="query" 
+                               placeholder="Digite o que você está procurando..." required>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label for="search_type" class="form-label">Tipo de Busca</label>
+                        <select class="form-select" id="search_type" name="search_type">
+                            <option value="filename">Por Nome do Arquivo</option>
+                            <option value="content">Por Conteúdo</option>
+                            <option value="vector">Busca Semântica (IA)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-search"></i> Buscar
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-file-signature fa-3x text-primary mb-3"></i>
+                <h5>Busca por Nome</h5>
+                <p class="text-muted">Encontre documentos pelo nome do arquivo ou pasta</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-file-alt fa-3x text-success mb-3"></i>
+                <h5>Busca por Conteúdo</h5>
+                <p class="text-muted">Pesquise dentro do texto dos documentos</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-brain fa-3x text-info mb-3"></i>
+                <h5>Busca Semântica</h5>
+                <p class="text-muted">IA encontra documentos relacionados ao contexto</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-info mt-4">
+    <h6><i class="fas fa-lightbulb"></i> Dicas de Busca:</h6>
+    <ul class="mb-0">
+        <li><strong>Nome do Arquivo:</strong> Use termos como "relatório", "manual", "especificação"</li>
+        <li><strong>Conteúdo:</strong> Busque por palavras-chave que aparecem no texto dos documentos</li>
+        <li><strong>Semântica:</strong> Descreva o que você precisa: "como configurar servidor", "processo de vendas"</li>
+    </ul>
+</div>
+{% endblock %}

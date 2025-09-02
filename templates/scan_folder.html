@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">Escanear Pasta</h1>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Adicionar Nova Pasta de Documentos</h5>
+    </div>
+    <div class="card-body">
+        <form id="scanForm" onsubmit="return scanFolder(event)">
+            <div class="mb-3">
+                <label for="folder_path" class="form-label">Caminho da Pasta</label>
+                <input type="text" class="form-control" id="folder_path" name="folder_path" 
+                       placeholder="Ex: C:\Documentos\Projetos ou /home/user/documentos" required>
+                <div class="form-text">Digite o caminho completo da pasta que contém os documentos.</div>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-folder-open"></i> Escanear Pasta
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0">Tipos de Arquivo Suportados</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Microsoft Office:</h6>
+                <ul>
+                    <li><i class="fas fa-file-word text-primary"></i> Documentos Word (.doc, .docx)</li>
+                    <li><i class="fas fa-file-excel text-success"></i> Planilhas Excel (.xls, .xlsx)</li>
+                    <li><i class="fas fa-file-powerpoint text-warning"></i> Apresentações PowerPoint (.ppt, .pptx)</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h6>Outros Formatos:</h6>
+                <ul>
+                    <li><i class="fas fa-file-pdf text-danger"></i> Arquivos PDF (texto e imagem)</li>
+                </ul>
+                
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Nota:</strong> O sistema extrai automaticamente o texto dos documentos para indexação e busca.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function scanFolder(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const button = event.target.querySelector('button[type="submit"]');
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Escaneando...';
+    
+    fetch('/scan_folder', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            document.getElementById('folder_path').value = '';
+        } else {
+            alert('Erro: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Erro ao escanear pasta');
+    })
+    .finally(() => {
+        button.disabled = false;
+        button.innerHTML = '<i class="fas fa-folder-open"></i> Escanear Pasta';
+    });
+    
+    return false;
+}
+</script>
+{% endblock %}

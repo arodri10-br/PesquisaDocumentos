@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">Resultados da Busca</h1>
+    <a href="{{ url_for('search') }}" class="btn btn-outline-primary">
+        <i class="fas fa-arrow-left"></i> Nova Busca
+    </a>
+</div>
+
+<div class="alert alert-info">
+    <strong>Busca:</strong> "{{ query }}" 
+    <span class="badge bg-secondary ms-2">
+        {% if search_type == 'filename' %}Por Nome
+        {% elif search_type == 'content' %}Por Conteúdo
+        {% else %}Semântica{% endif %}
+    </span>
+    <strong class="ms-3">Resultados:</strong> {{ results|length }}
+</div>
+
+{% if results %}
+<div class="row">
+    {% for doc in results %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card document-card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="badge bg-info">{{ doc.file_type|default('')|upper }}</span>
+
+                {# Mostra o score só se existir (compatível com objetos SQLAlchemy ou dict) #}
+                {% set score = doc|attr('similarity_score') %}
+                {% if score is defined and score is not none %}
+                  <span class="badge bg-success">{{ "%.1f"|format(score * 100) }}%</span>
+                {% endif %}
+            </div>
+
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="fas fa-file-{% if doc.file_type == 'pdf' %}pdf{% elif doc.file_type in ['doc', 'docx'] %}word{% elif doc.file_type in ['xls', 'xlsx'] %}excel{% elif doc.file_type in ['ppt', 'pptx'] %}powerpoint{% else %}alt{% endif %} me-2"></i>
+                    {{ doc.filename|default('(sem nome)') }}
+                </h6>
+
+                <p class="card-text text-muted small">
+                    <i class="fas fa-folder"></i> {{ doc.folder_path|default('—') }}
+                </p>
+
+                {% if doc.content_text is defined and doc.content_text %}
+                <p class="card-text">
+                    {{ doc.content_text|truncate(150, True, '...') }}
+                </p>
+                {% endif %}
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">
+                        {% if doc.modified_date %}
+                            {{ doc.modified_date.strftime('%d/%m/%Y') }}
+                        {% endif %}
+                    </small>
+                    {% if doc.id is defined %}
+                    <a href="{{ url_for('view_document', doc_id=doc.id) }}" class="btn btn-sm btn-primary">
+                        <i class="fas fa-eye"></i> Ver
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="fas fa-search fa-5x text-muted mb-3"></i>
+    <h4>Nenhum resultado encontrado</h4>
+    <p class="text-muted">Tente outros termos de busca ou verifique se os documentos foram indexados.</p>
+</div>
+{% endif %}
+{% endblock %}
