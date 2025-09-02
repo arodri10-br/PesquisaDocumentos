@@ -1,21 +1,23 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
 import json
+
 from document_processor import DocumentProcessor
 from search_engine import SearchEngine
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///documents.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.secret_key = 'seu-secret-key-aqui'
 app.config['TEMPLATES_AUTO_RELOAD'] = True
-app.jinja_env.auto_reload = True
+app.secret_key = 'seu-secret-key-aqui'
 
 db = SQLAlchemy(app)
 
+# ----------------------------
 # Modelos
+# ----------------------------
 class Document(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
@@ -29,7 +31,7 @@ class Document(db.Model):
     embeddings = db.Column(db.Text)  # JSON string dos embeddings
     status = db.Column(db.String(20), default='pending')  # pending, indexed, error
     folder_path = db.Column(db.String(500))
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -51,11 +53,16 @@ class SearchQuery(db.Model):
     results_count = db.Column(db.Integer)
     created_date = db.Column(db.DateTime, default=datetime.utcnow)
 
+# ----------------------------
 # Inicializar processadores
+# ----------------------------
 document_processor = DocumentProcessor()
-#search_engine = SearchEngine()
+# DICA: padronize o modelo (384 dims), melhor p/ PT-BR:
 search_engine = SearchEngine(model_name="paraphrase-multilingual-MiniLM-L12-v2")
 
+# ----------------------------
+# Rotas
+# ----------------------------
 @app.route('/')
 def index():
     stats = {
@@ -64,7 +71,7 @@ def index():
         'pending_docs': Document.query.filter_by(status='pending').count(),
         'error_docs': Document.query.filter_by(status='error').count()
     }
-    recent_docs = Document.query.order_by(Document.indexed_date.desc()).limit(10).all()
+    recent_docs = Document.query.order_by(Document.indexed_date.desc().nullslast()).limit(10).all()
     return render_template('index.html', stats=stats, recent_docs=recent_docs)
 
 @app.route('/scan_folder', methods=['GET', 'POST'])
@@ -72,103 +79,77 @@ def scan_folder():
     if request.method == 'POST':
         folder_path = request.form.get('folder_path')
         if folder_path and os.path.exists(folder_path):
-            count = document_processor.scan_folder(folder_path, db)
+            count = document_processor.scan_folder(folder_path, db.session, Document)
             return jsonify({'success': True, 'message': f'{count} documentos encontrados e adicionados ao banco.'})
         else:
             return jsonify({'success': False, 'message': 'Caminho da pasta inválido.'})
-    
     return render_template('scan_folder.html')
 
 @app.route('/documents')
 def documents():
     page = request.args.get('page', 1, type=int)
     status_filter = request.args.get('status', '')
-    
     query = Document.query
     if status_filter:
         query = query.filter_by(status=status_filter)
-    
-    documents = query.paginate(
-        page=page, per_page=20, error_out=False
-    )
-    
+    documents = query.paginate(page=page, per_page=20, error_out=False)
     return render_template('documents.html', documents=documents, status_filter=status_filter)
 
 @app.route('/search', methods=['GET', 'POST'])
 def search():
     if request.method == 'POST':
-        # 1) Normalize
         query_text = (request.form.get('query') or '').strip()
         search_type = (request.form.get('search_type') or 'filename').strip()
 
-        # 2) Validação: não prossiga nem salve se vazio
         if not query_text:
-            # opcional: flash exige um bloco para mostrar no template base
             flash('Digite um termo de busca.', 'warning')
             return render_template('search.html')
 
-        # 3) Executa a busca
+        # Executa a busca
         if search_type == 'filename':
-            results = Document.query.filter(
-                Document.filename.contains(query_text)
-            ).all()
+            results = Document.query.filter(Document.filename.contains(query_text)).all()
         elif search_type == 'content':
-            results = Document.query.filter(
-                Document.content_text.contains(query_text)
-            ).all()
+            results = Document.query.filter(Document.content_text.contains(query_text)).all()
         elif search_type == 'vector':
             results = search_engine.vector_search(query_text, db.session, Document, limit=12)
+            # snippet opcional (se o engine tiver helper)
+            for doc in results:
+                if getattr(doc, 'content_text', None) and hasattr(search_engine, 'find_relevant_snippet'):
+                    doc.relevant_snippet = search_engine.find_relevant_snippet(query_text, doc.content_text)
         else:
             results = []
 
-        # 4) Persiste a consulta só se houver query_text válido
+        # Salva histórico da consulta (sem quebrar a página se der erro)
         try:
-            search_query = SearchQuery(
-                query_text=query_text,
-                search_type=search_type,
-                results_count=len(results)
-            )
-            db.session.add(search_query)
+            sq = SearchQuery(query_text=query_text, search_type=search_type, results_count=len(results))
+            db.session.add(sq)
             db.session.commit()
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            # log opcional
-            app.logger.exception("Falha ao salvar SearchQuery")
-            # Não derrube a página de resultado por causa do log
-            # (se preferir, pode exibir um aviso)
-            # flash('Não foi possível registrar a consulta no histórico.', 'danger')
 
-        # 5) Render
-        return render_template(
-            'search_results.html',
-            results=results,
-            query=query_text,
-            search_type=search_type
-        )
+        return render_template('search_results.html', results=results, query=query_text, search_type=search_type)
 
-    # GET
     return render_template('search.html')
 
 @app.route('/index_documents')
 def index_documents():
     pending_docs = Document.query.filter_by(status='pending').all()
     indexed_count = 0
-    
+
     for doc in pending_docs:
         try:
             content = document_processor.extract_content(doc.filepath, doc.file_type)
             embeddings = search_engine.create_embeddings(content)
-            
+
             doc.content_text = content
             doc.embeddings = json.dumps(embeddings.tolist()) if embeddings is not None else None
             doc.status = 'indexed'
             doc.indexed_date = datetime.utcnow()
-            
             indexed_count += 1
         except Exception as e:
             doc.status = 'error'
             print(f"Erro ao indexar {doc.filepath}: {str(e)}")
-    
+
     db.session.commit()
     return jsonify({'success': True, 'message': f'{indexed_count} documentos indexados com sucesso.'})
 
@@ -176,7 +157,6 @@ def index_documents():
 def folder_structure():
     folder_paths = db.session.query(Document.folder_path).distinct().all()
     folder_structure = {}
-    
     for (folder_path,) in folder_paths:
         if folder_path:
             parts = folder_path.split(os.sep)
@@ -185,30 +165,17 @@ def folder_structure():
                 if part not in current:
                     current[part] = {}
                 current = current[part]
-    
     return render_template('folder_structure.html', folder_structure=folder_structure)
 
 @app.route('/rag_chat', methods=['GET', 'POST'])
 def rag_chat():
     if request.method == 'POST':
-        question = request.form.get('question')
+        question = (request.form.get('question') or '').strip()
         if question:
-            # Busca por documentos relevantes
-            embeddings = search_engine.create_embeddings(content)
-            doc.embeddings = json.dumps(embeddings.tolist()) if embeddings is not None else None
-
-            # Gera resposta baseada nos documentos
-            context = '\n\n'.join([doc.content_text[:500] for doc in relevant_docs if doc.content_text])
-            
-            # Aqui você pode integrar com uma API de LLM como OpenAI GPT
-            # Por enquanto, retornamos uma resposta simples
+            relevant_docs = search_engine.vector_search(question, db.session, Document, limit=3)
+            context = '\n\n'.join([doc.content_text[:500] for doc in relevant_docs if getattr(doc, 'content_text', None)])
             answer = f"Baseado nos documentos encontrados:\n\n{context}\n\nPara uma resposta mais elaborada, integre com um modelo de linguagem."
-            
-            return render_template('rag_results.html', 
-                                 question=question, 
-                                 answer=answer, 
-                                 relevant_docs=relevant_docs)
-    
+            return render_template('rag_results.html', question=question, answer=answer, relevant_docs=relevant_docs)
     return render_template('rag_chat.html')
 
 @app.route('/document/<int:doc_id>')

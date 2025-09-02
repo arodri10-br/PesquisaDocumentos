@@ -1,62 +1,57 @@
 import json
+import re
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
 
 class SearchEngine:
-    def __init__(self, model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"):
-        """
-        Use um modelo SBERT pronto para sentenças em PT para evitar o aviso:
-        'No sentence-transformers model found ... Creating a new one with mean pooling.'
-        Se quiser manter o neuralmind/bert-base-portuguese-cased, passe o nome no model_name.
-        """
-        self.model = SentenceTransformer(model_name)
-        self.index = None            # faiss.IndexFlatIP
-        self.doc_ids = []            # lista de IDs (ordem alinhada ao índice)
-        self.dim = None              # dimensão dos embeddings
-        self._built = False          # flag simples de construção
+    """
+    Engine de embeddings + FAISS, desacoplado do app.
+    - NÃO importa db nem models do app.
+    - Recebe db.session e a classe Document por parâmetro.
+    """
 
-    # ---------- Embeddings util ----------
+    def __init__(self, model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"):
+        self.model = SentenceTransformer(model_name)
+        self.index = None
+        self.doc_ids: list[int] = []
+        self.dim = None
+        self._built = False
+
+    # -----------------------
+    # Embeddings
+    # -----------------------
     def _encode(self, texts):
-        # normalize_embeddings=True deixa prontos p/ cosseno (e p/ IP com normalização)
+        # normaliza L2 -> pronto para cos_sim (e IP com vetores normalizados)
         return self.model.encode(texts, normalize_embeddings=True)
 
     def create_embeddings(self, text: str):
-        """Cria embedding (np.ndarray) para um texto, já normalizado."""
         if not text or not text.strip():
             return None
         try:
             vec = self._encode([text])[0]
-            return vec  # np.ndarray (float32)
+            return vec  # np.ndarray float32
         except Exception as e:
             print(f"Erro ao criar embeddings: {e}")
             return None
 
-    # ---------- Indexação ----------
+    # -----------------------
+    # Índice FAISS
+    # -----------------------
     def reset_index(self):
-        """Reseta o índice FAISS (chame após grandes mudanças de base)."""
         self.index = None
         self.doc_ids = []
         self.dim = None
         self._built = False
 
     def build_index(self, session, DocumentModel):
-        """
-        Constrói o índice FAISS a partir dos documentos 'indexed' com embeddings.
-        NÃO importa o db/app; usa apenas a session e o modelo recebidos.
-        """
         docs = (
             session.query(DocumentModel)
             .filter(DocumentModel.status == 'indexed')
             .filter(DocumentModel.embeddings.isnot(None))
             .all()
         )
-        if not docs:
-            self.reset_index()
-            return
-
-        vectors = []
-        ids = []
+        vecs, ids = [], []
         for d in docs:
             try:
                 emb = d.embeddings
@@ -64,21 +59,18 @@ class SearchEngine:
                     emb = np.array(json.loads(emb), dtype=np.float32)
                 else:
                     emb = np.array(emb, dtype=np.float32)
-                if emb.ndim != 1:
-                    continue
-                vectors.append(emb)
-                ids.append(d.id)
+                if emb.ndim == 1:
+                    vecs.append(emb)
+                    ids.append(d.id)
             except Exception:
-                continue
+                pass
 
-        if not vectors:
+        if not vecs:
             self.reset_index()
             return
 
-        mat = np.vstack(vectors).astype('float32')   # shape: (n_docs, dim)
+        mat = np.vstack(vecs).astype('float32')
         self.dim = mat.shape[1]
-
-        # Normaliza L2 para usar Inner Product como similaridade de cosseno
         faiss.normalize_L2(mat)
 
         self.index = faiss.IndexFlatIP(self.dim)
@@ -86,15 +78,14 @@ class SearchEngine:
         self.doc_ids = ids
         self._built = True
 
-    # ---------- Busca ----------
+    # -----------------------
+    # Busca
+    # -----------------------
     def vector_search(self, query_text: str, session, DocumentModel, limit: int = 10):
-        """
-        Busca semântica usando FAISS. Retorna lista de Document com atributo .similarity_score (0..1).
-        """
+        """Retorna lista de Document com atributo .similarity_score (0..1)."""
         if not query_text or not query_text.strip():
             return []
 
-        # Constrói (ou reconstrói) sob demanda se ainda não existir
         if self.index is None or not self._built or self.index.ntotal == 0:
             self.build_index(session, DocumentModel)
 
@@ -105,11 +96,16 @@ class SearchEngine:
         if q is None:
             return []
 
-        q = np.array([q], dtype=np.float32)  # (1, dim)
+        q = np.array([q], dtype=np.float32)
         faiss.normalize_L2(q)
 
+        if self.dim is not None and q.shape[1] != self.dim:
+            # Dimensão do embedding difere do índice (modelo mudou)
+            print(f"[search_engine] Dimensão consulta {q.shape[1]} != índice {self.dim}. Reindexe com o mesmo modelo.")
+            return []
+
         k = min(limit, self.index.ntotal)
-        scores, idxs = self.index.search(q, k)  # scores: (1, k), idxs: (1, k)
+        scores, idxs = self.index.search(q, k)
 
         out = []
         for score, idx in zip(scores[0], idxs[0]):
@@ -117,49 +113,39 @@ class SearchEngine:
                 doc_id = self.doc_ids[idx]
                 doc = session.get(DocumentModel, doc_id)
                 if doc is not None:
-                    # Como usamos IP com vetores normalizados, o score já é cos_sim (0..1)
                     try:
                         doc.similarity_score = float(score)
                     except Exception:
                         doc.similarity_score = None
                     out.append(doc)
-
         return out
 
-    def semantic_search(self, query_text: str, documents, limit: int = 10):
-        """
-        Variante simples sem FAISS: calcula cos_sim contra embeddings salvos em 'documents'.
-        Cada doc deve ter .embeddings (JSON list ou np-array-like).
-        """
-        if not documents:
-            return []
+    # -----------------------
+    # Snippet relevante (opcional)
+    # -----------------------
+    def find_relevant_snippet(self, query_text: str, document_text: str, max_length: int = 300) -> str:
+        if not document_text or not query_text:
+            return document_text[:max_length] if document_text else ""
 
-        q = self.create_embeddings(query_text)
-        if q is None:
-            return []
+        sentences = re.split(r'[.!?]+', document_text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        if not sentences:
+            return document_text[:max_length]
 
-        results = []
-        for d in documents:
-            emb = getattr(d, 'embeddings', None)
-            if not emb:
-                continue
-            try:
-                if isinstance(emb, str):
-                    emb = np.array(json.loads(emb), dtype=np.float32)
-                else:
-                    emb = np.array(emb, dtype=np.float32)
+        qv = self.create_embeddings(query_text)
+        if qv is None:
+            return document_text[:max_length]
 
-                # cos_sim(q, emb) com normalização explícita
-                denom = (np.linalg.norm(q) * np.linalg.norm(emb))
-                if denom == 0:
-                    sim = 0.0
-                else:
-                    sim = float(np.dot(q, emb) / denom)
-
-                d.similarity_score = sim
-                results.append(d)
-            except Exception:
-                continue
-
-        results.sort(key=lambda x: (x.similarity_score or 0.0), reverse=True)
-        return results[:limit]
+        best = ("", -1.0)
+        for i in range(len(sentences)):
+            end = min(i + 3, len(sentences))
+            snippet = ". ".join(sentences[i:end])
+            if len(snippet) > max_length:
+                snippet = snippet[:max_length] + "..."
+            sv = self.create_embeddings(snippet)
+            if sv is not None:
+                denom = (np.linalg.norm(qv) * np.linalg.norm(sv)) or 1.0
+                sim = float(np.dot(qv, sv) / denom)
+                if sim > best[1]:
+                    best = (snippet, sim)
+        return best[0] or document_text[:max_length]

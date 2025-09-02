@@ -1,0 +1,50 @@
+# Ambiente virtual
+.venv/
+venv/
+ENV/
+env/
+
+# Arquivos de banco de dados SQLite
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+*.pid
+
+# Cache e arquivos temporários
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.tmp
+*.swp
+
+# Configuração local / chaves
+*.env
+.env.*
+secrets.json
+
+# Build e distribuição
+build/
+dist/
+*.egg-info/
+
+# IDEs e editores
+.vscode/
+.idea/
+*.iml
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# PDFs, PowerPoints ou relatórios gerados
+*.pdf
+*.pptx
+
+# Diretórios de upload temporário (se existirem)
+uploads/
+tmp/
